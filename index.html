@@ -6,10 +6,11 @@
 <title>牢w · 马年国潮主页</title>
 
 <style>
-*{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei",system-ui}
+*{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei",system-ui;-webkit-user-select:none;user-select:none}
+
 body{
   min-height:100vh;
-  background:radial-gradient(circle at center,#2a0000,#0b0000);
+  background:#0b0000; /* 兜底防白边 */
   display:flex;
   justify-content:center;
   align-items:center;
@@ -17,10 +18,22 @@ body{
   overflow:hidden;
 }
 
+/* 防止抖动露白的背景层 */
+body::before{
+  content:"";
+  position:fixed;
+  left:-80px;right:-80px;top:-80px;bottom:-80px;
+  background:radial-gradient(circle at center,#2a0000,#0b0000);
+  z-index:-1;
+}
+
 canvas{position:fixed;inset:0;pointer-events:none;z-index:0}
 
 /* 🐎 奔马 */
 .horse{
+  pointer-events:none;
+  -webkit-user-drag:none;
+  user-drag:none;
   position:fixed;
   bottom:18%;
   left:-50%;
@@ -30,8 +43,6 @@ canvas{position:fixed;inset:0;pointer-events:none;z-index:0}
   animation:run 14s linear infinite;
   z-index:1;
 }
-
-.horse.reverse{transform:scaleX(-1)}
 
 @keyframes run{
   0%{transform:translateX(0) scaleX(1)}
@@ -53,6 +64,7 @@ canvas{position:fixed;inset:0;pointer-events:none;z-index:0}
   box-shadow:0 30px 80px rgba(0,0,0,.6);
   border:1px solid rgba(255,255,255,.35);
   text-align:center;
+  will-change:transform;
 }
 
 .badge{
@@ -77,29 +89,54 @@ h1{margin:10px 0 6px;font-size:clamp(26px,7vw,38px)}
   text-shadow:0 0 20px rgba(255,214,102,.8),0 0 45px rgba(255,214,102,.4);
 }
 
-.countdown{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:12px;
-}
+.countdown{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+
 .box{
   padding:16px 8px;
   border-radius:16px;
   background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.25));
   border:1px solid rgba(255,215,102,.25);
 }
+
 .box span{font-size:26px;font-weight:800;color:#ffd666}
 .box p{font-size:12px;opacity:.85}
-
 .message{margin-top:18px;font-size:16px}
 .footer{margin-top:22px;font-size:12px;opacity:.65}
+
+@keyframes shake-bg{
+  0%{transform:translate(0)}
+  20%{transform:translate(-3px,2px)}
+  40%{transform:translate(3px,-2px)}
+  60%{transform:translate(-2px,2px)}
+  80%{transform:translate(2px,-2px)}
+  100%{transform:translate(0)}
+}
+
+@keyframes shake-horse{
+  0%{transform:translateX(0)}
+  30%{transform:translateX(8px)}
+  60%{transform:translateX(-8px)}
+  100%{transform:translateX(0)}
+}
+
+@keyframes shake-card{
+  0%{transform:translate(0)}
+  20%{transform:translate(-6px,4px)}
+  40%{transform:translate(6px,-4px)}
+  60%{transform:translate(-5px,3px)}
+  80%{transform:translate(5px,-3px)}
+  100%{transform:translate(0)}
+}
+
+body.shake::before{animation:shake-bg .35s ease}
+body.shake .horse{animation:shake-horse .35s ease}
+body.shake .card{animation:shake-card .35s ease}
 </style>
 </head>
-
 <body>
 <canvas id="fx"></canvas>
 
-<img id="horse" class="horse" src="data:image/svg+xml;utf8,
+<img class="horse" src="data:image/svg+xml;utf8,
 <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 400'>
 <path d='M60 260 C160 120 300 80 420 140 C520 180 600 130 700 160'
 fill='none' stroke='%23ffd666' stroke-width='22' stroke-linecap='round'/>
@@ -112,16 +149,13 @@ stroke='%23ffd666' stroke-width='16' stroke-linecap='round'/>
   <div class="badge">🐎 马年 · 国潮主页</div>
   <h1>牢w 的主页</h1>
   <div class="sub">Horse Year · Chinese Style</div>
-
   <div class="year" id="year"></div>
-
   <div class="countdown">
     <div class="box"><span id="d">00</span><p>天</p></div>
     <div class="box"><span id="h">00</span><p>时</p></div>
     <div class="box"><span id="m">00</span><p>分</p></div>
     <div class="box"><span id="s">00</span><p>秒</p></div>
   </div>
-
   <div class="message" id="msg">马踏祥云，势不可挡</div>
   <div class="footer">© 牢w · 马年主页</div>
 </div>
@@ -133,7 +167,6 @@ const h=document.getElementById('h');
 const m=document.getElementById('m');
 const s=document.getElementById('s');
 const msg=document.getElementById('msg');
-const horse=document.getElementById('horse');
 const fx=document.getElementById('fx');
 
 const y=new Date().getFullYear()+1;
@@ -153,39 +186,56 @@ setInterval(()=>{
   s.innerText=String(diff/1000%60|0).padStart(2,'0');
 },1000);
 
-horse.addEventListener("animationiteration",()=>{
-  horse.classList.toggle("reverse");
-});
-
 const c=fx;
-const ctx=c.getContext("2d");
+const ctx=c.getContext('2d');
 function resize(){c.width=innerWidth;c.height=innerHeight}
 resize();addEventListener('resize',resize);
 
 let ps=[];
+let paused=false;
+
 function fireworks(x0,y0){
-  for(let i=0;i<90;i++){
+  if(paused) return;
+  const count=120;
+  for(let i=0;i<count;i++){
+    const speed=Math.random()*2+0.5;
     ps.push({
-      x:x0??Math.random()*c.width,
-      y:y0??Math.random()*c.height*0.6,
+      x:x0 ?? Math.random()*c.width,
+      y:y0 ?? Math.random()*c.height*0.6,
       a:Math.random()*Math.PI*2,
-      s:Math.random()*5+2,
-      l:80
+      s:0,
+      targetS:speed,
+      l:150,
+      alpha:0
     });
   }
 }
 
-setInterval(()=>fireworks(),1800);
-addEventListener("pointerdown",e=>fireworks(e.clientX,e.clientY));
+setInterval(()=>fireworks(),2200);
+
+document.addEventListener('visibilitychange',()=>{
+  paused=document.hidden;
+  if(paused) ps.length=0;
+});
+
+addEventListener('pointerdown',e=>{
+  fireworks(e.clientX,e.clientY);
+  document.body.classList.add('shake');
+  setTimeout(()=>document.body.classList.remove('shake'),300);
+  if(navigator.vibrate) navigator.vibrate([20,30,20]);
+});
 
 (function draw(){
   ctx.clearRect(0,0,c.width,c.height);
-  ps=ps.filter(p=>p.l--);
+  ps=ps.filter(p=>p.l>0);
   ps.forEach(p=>{
+    p.s+=(p.targetS-p.s)*0.08;
     p.x+=Math.cos(p.a)*p.s;
     p.y+=Math.sin(p.a)*p.s;
-    ctx.fillStyle="#ffd666";
-    ctx.fillRect(p.x,p.y,2,2);
+    p.l--;
+    p.alpha=Math.min(1,p.alpha+0.04)*Math.max(p.l/150,0);
+    ctx.fillStyle=`rgba(255,214,102,${p.alpha})`;
+    ctx.fillRect(p.x,p.y,2.4,2.4);
   });
   requestAnimationFrame(draw);
 })();
